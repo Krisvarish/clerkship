@@ -34,28 +34,6 @@ export const WelcomeCard: React.FC<WelcomeCardProps> = ({ onCreatePress }) => {
           Set up your first semester timetable and subjects to start tracking your clinical & theory attendance.
         </ThemedText>
 
-        {/* Feature Highlights */}
-        <View style={styles.featuresList}>
-          <View style={styles.featureItem}>
-            <View style={styles.featureDot} />
-            <ThemedText variant="caption" color={Colors.textSecondary}>
-              Offline-first persistence with weekly variations
-            </ThemedText>
-          </View>
-          <View style={styles.featureItem}>
-            <View style={styles.featureDot} />
-            <ThemedText variant="caption" color={Colors.textSecondary}>
-              Automated 75% attendance threshold tracking
-            </ThemedText>
-          </View>
-          <View style={styles.featureItem}>
-            <View style={styles.featureDot} />
-            <ThemedText variant="caption" color={Colors.textSecondary}>
-              Time-gated anti-mispress attendance locks
-            </ThemedText>
-          </View>
-        </View>
-
         {/* Primary Action Button */}
         <PillButton
           label="+ Create Your First Semester"
@@ -97,26 +75,7 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     lineHeight: 22,
-    marginBottom: 20,
-  },
-  featuresList: {
-    width: '100%',
-    backgroundColor: '#F3EFE9',
-    borderRadius: 14,
-    padding: 14,
     marginBottom: 24,
-    gap: 8,
-  },
-  featureItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  featureDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: Colors.sage,
-    marginRight: 10,
   },
   actionButton: {
     width: '100%',

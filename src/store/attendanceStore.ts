@@ -123,7 +123,11 @@ export const useAttendanceStore = create<AttendanceStoreState>()(
             };
           }
 
-          updatedAttendanceData[dateKey] = dayRecords;
+          if (Object.keys(dayRecords).length === 0) {
+            delete updatedAttendanceData[dateKey];
+          } else {
+            updatedAttendanceData[dateKey] = dayRecords;
+          }
 
           const updatedSemester: SemesterProfile = {
             ...semester,
@@ -147,7 +151,12 @@ export const useAttendanceStore = create<AttendanceStoreState>()(
           const updatedAttendanceData = { ...semester.attendanceData };
           const dayRecords = { ...(updatedAttendanceData[dateKey] || {}) };
           delete dayRecords[slotId];
-          updatedAttendanceData[dateKey] = dayRecords;
+
+          if (Object.keys(dayRecords).length === 0) {
+            delete updatedAttendanceData[dateKey];
+          } else {
+            updatedAttendanceData[dateKey] = dayRecords;
+          }
 
           const updatedSemester: SemesterProfile = {
             ...semester,

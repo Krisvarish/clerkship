@@ -19,6 +19,7 @@ import CalmSwitch from '../../components/ui/CalmSwitch';
 import SemesterModal from '../../components/ui/SemesterModal';
 import { useAttendanceStore } from '../../store/attendanceStore';
 import { SemesterProfile } from '../../types/attendance';
+import { pluralize } from '../../utils/scheduleUtils';
 
 export default function SemestersScreen() {
   const insets = useSafeAreaInsets();
@@ -155,7 +156,9 @@ export default function SemestersScreen() {
           {/* Section: Saved Semesters */}
           <View style={styles.sectionHeaderRow}>
             <ThemedText variant="subheading" weight="semibold">
-              Your Semesters ({semesters.length})
+              {semesters.length === 0
+                ? 'Your Semesters'
+                : `Your Semesters (${semesters.length})`}
             </ThemedText>
           </View>
 
@@ -204,7 +207,7 @@ export default function SemestersScreen() {
                         )}
                       </View>
                       <ThemedText variant="caption" color={Colors.textSecondary}>
-                        {sem.subjects.length} Subjects • {attendanceDaysCount} Days Logged
+                        {pluralize(sem.subjects.length, 'Subject', 'Subjects')} • {pluralize(attendanceDaysCount, 'Day', 'Days')} Logged
                       </ThemedText>
                     </View>
 

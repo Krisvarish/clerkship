@@ -9,12 +9,11 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, Shadows } from '../../constants/Colors';
+import { Colors } from '../../constants/Colors';
 import ThemedText from '../../components/ui/ThemedText';
 import Card from '../../components/ui/Card';
 import ProgressBar from '../../components/ui/ProgressBar';
 import Badge from '../../components/ui/Badge';
-import PillButton from '../../components/ui/PillButton';
 import SemesterModal from '../../components/ui/SemesterModal';
 import WelcomeCard from '../../components/ui/WelcomeCard';
 import { useActiveSemester, useAttendanceStore } from '../../store/attendanceStore';
@@ -22,6 +21,7 @@ import { SemesterProfile } from '../../types/attendance';
 import {
   calculateSubjectStats,
   calculateAggregateStats,
+  pluralize,
 } from '../../utils/scheduleUtils';
 
 const MONTH_NAMES = [
@@ -47,39 +47,45 @@ export default function AnalyticsScreen() {
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
 
   // Month-wise filter setup
+  // Collect all distinct months from recorded attendance, creation date, and current date
   const availableMonths = useMemo(() => {
-    const list: { key: string; label: string }[] = [];
-    const start = new Date(activeSemester?.createdAt || Date.now());
+    const monthKeysSet = new Set<string>();
+
+    // Current month
     const now = new Date();
+    const currentKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    monthKeysSet.add(currentKey);
 
-    const curr = new Date(start.getFullYear(), start.getMonth(), 1);
-    const end = new Date(now.getFullYear(), now.getMonth(), 1);
-
-    if (curr > end) {
-      curr.setFullYear(end.getFullYear());
-      curr.setMonth(end.getMonth() - 2);
+    // Semester creation month
+    if (activeSemester?.createdAt) {
+      const created = new Date(activeSemester.createdAt);
+      if (!isNaN(created.getTime())) {
+        const createdKey = `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, '0')}`;
+        monthKeysSet.add(createdKey);
+      }
     }
 
-    while (curr <= end) {
-      const year = curr.getFullYear();
-      const month = String(curr.getMonth() + 1).padStart(2, '0');
-      const key = `${year}-${month}`;
-      const label = `${MONTH_NAMES[curr.getMonth()].substring(0, 3)} ${year}`;
-      list.push({ key, label });
-      curr.setMonth(curr.getMonth() + 1);
+    // Attendance data dates
+    if (activeSemester?.attendanceData) {
+      for (const dateKey of Object.keys(activeSemester.attendanceData)) {
+        if (dateKey.length >= 7) {
+          monthKeysSet.add(dateKey.substring(0, 7));
+        }
+      }
     }
 
-    if (list.length === 0) {
-      const nowYear = now.getFullYear();
-      const nowMonth = String(now.getMonth() + 1).padStart(2, '0');
-      list.push({
-        key: `${nowYear}-${nowMonth}`,
-        label: `${MONTH_NAMES[now.getMonth()].substring(0, 3)} ${nowYear}`,
-      });
-    }
-
-    return list;
-  }, [activeSemester?.createdAt]);
+    const sortedKeys = Array.from(monthKeysSet).sort();
+    return sortedKeys.map((key) => {
+      const [yStr, mStr] = key.split('-');
+      const y = parseInt(yStr, 10);
+      const m = parseInt(mStr, 10) - 1;
+      const monthLabel = MONTH_NAMES[m] ? MONTH_NAMES[m].substring(0, 3) : mStr;
+      return {
+        key,
+        label: `${monthLabel} ${y}`,
+      };
+    });
+  }, [activeSemester]);
 
   const [selectedMonthKey, setSelectedMonthKey] = useState<string>(
     availableMonths[availableMonths.length - 1]?.key || ''
@@ -128,6 +134,8 @@ export default function AnalyticsScreen() {
       </SafeAreaView>
     );
   }
+
+  const hasConductedClasses = aggregateStats.totalConducted > 0;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -267,11 +275,23 @@ export default function AnalyticsScreen() {
                 </ThemedText>
                 <View style={styles.percentageRow}>
                   <ThemedText variant="title" weight="semibold" style={styles.largePercentage}>
-                    {aggregateStats.overallPercentage}%
+                    {hasConductedClasses ? `${aggregateStats.overallPercentage}%` : '—'}
                   </ThemedText>
                   <Badge
-                    label={aggregateStats.isAboveThreshold ? 'Above 75%' : 'Below 75%'}
-                    variant={aggregateStats.isAboveThreshold ? 'present' : 'absent'}
+                    label={
+                      !hasConductedClasses
+                        ? 'No Classes Yet'
+                        : aggregateStats.isAboveThreshold
+                        ? 'Above 75%'
+                        : 'Below 75%'
+                    }
+                    variant={
+                      !hasConductedClasses
+                        ? 'neutral'
+                        : aggregateStats.isAboveThreshold
+                        ? 'present'
+                        : 'absent'
+                    }
                     size="sm"
                     style={{ marginLeft: 10, alignSelf: 'center' }}
                   />
@@ -290,8 +310,9 @@ export default function AnalyticsScreen() {
 
             {/* Progress bar */}
             <ProgressBar
-              progress={aggregateStats.overallPercentage}
+              progress={hasConductedClasses ? aggregateStats.overallPercentage : 0}
               height={10}
+              fillColor={!hasConductedClasses ? Colors.sand : undefined}
               style={{ marginVertical: 14 }}
             />
 
@@ -299,31 +320,45 @@ export default function AnalyticsScreen() {
             <View style={styles.summaryFooterRow}>
               <View style={styles.footerNoteRow}>
                 <Feather
-                  name={aggregateStats.isAboveThreshold ? 'check-circle' : 'alert-circle'}
+                  name={
+                    !hasConductedClasses
+                      ? 'info'
+                      : aggregateStats.isAboveThreshold
+                      ? 'check-circle'
+                      : 'alert-circle'
+                  }
                   size={14}
-                  color={aggregateStats.isAboveThreshold ? Colors.sage : Colors.terracotta}
+                  color={
+                    !hasConductedClasses
+                      ? Colors.textSecondary
+                      : aggregateStats.isAboveThreshold
+                      ? Colors.sage
+                      : Colors.terracotta
+                  }
                   style={{ marginRight: 6 }}
                 />
                 <ThemedText
                   variant="caption"
                   weight="medium"
-                  color={aggregateStats.isAboveThreshold ? Colors.sage : Colors.terracotta}
+                  color={
+                    !hasConductedClasses
+                      ? Colors.textSecondary
+                      : aggregateStats.isAboveThreshold
+                      ? Colors.sage
+                      : Colors.terracotta
+                  }
                 >
-                  {aggregateStats.totalConducted === 0
-                    ? 'No classes conducted in this period.'
+                  {!hasConductedClasses
+                    ? 'No classes conducted yet in this period.'
                     : aggregateStats.isAboveThreshold
-                    ? `Safe • Can miss ${aggregateStats.classesCanMiss} class${
-                        aggregateStats.classesCanMiss === 1 ? '' : 'es'
-                      } and stay >= 75%`
-                    : `Must attend next ${aggregateStats.classesToAttend} consecutive class${
-                        aggregateStats.classesToAttend === 1 ? '' : 'es'
-                      } for 75%`}
+                    ? `Safe • Can miss ${pluralize(aggregateStats.classesCanMiss, 'class', 'classes')} and remain >= 75%`
+                    : `Attend next ${pluralize(aggregateStats.classesToAttend, 'consecutive class', 'consecutive classes')} to reach 75%`}
                 </ThemedText>
               </View>
 
               {aggregateStats.totalCancelled > 0 && (
                 <ThemedText variant="small" color={Colors.sand}>
-                  {aggregateStats.totalCancelled} cancelled
+                  {pluralize(aggregateStats.totalCancelled, 'class', 'classes')} cancelled
                 </ThemedText>
               )}
             </View>
@@ -335,12 +370,14 @@ export default function AnalyticsScreen() {
               Subject Breakdown
             </ThemedText>
             <ThemedText variant="caption" color={Colors.textSecondary}>
-              {subjectStats.length} Subjects
+              {pluralize(subjectStats.length, 'Subject', 'Subjects')}
             </ThemedText>
           </View>
 
           {/* Subject Cards List */}
           {subjectStats.map((sub) => {
+            const hasSubClasses = sub.totalConducted > 0;
+
             return (
               <Card key={sub.subject} style={styles.subjectCard} elevated>
                 {/* Top: Name & Percentage */}
@@ -350,22 +387,29 @@ export default function AnalyticsScreen() {
                       {sub.subject}
                     </ThemedText>
                     <ThemedText variant="caption" color={Colors.textSecondary}>
-                      {sub.present} attended of {sub.totalConducted} conducted
+                      {sub.present} attended of {pluralize(sub.totalConducted, 'class', 'classes')} conducted
                     </ThemedText>
                   </View>
 
                   <ThemedText
                     variant="heading"
                     weight="semibold"
-                    color={sub.isAboveThreshold ? Colors.sage : Colors.terracotta}
+                    color={
+                      !hasSubClasses
+                        ? Colors.textSecondary
+                        : sub.isAboveThreshold
+                        ? Colors.sage
+                        : Colors.terracotta
+                    }
                   >
-                    {sub.percentage}%
+                    {hasSubClasses ? `${sub.percentage}%` : '—'}
                   </ThemedText>
                 </View>
 
                 {/* Progress bar */}
                 <ProgressBar
-                  progress={sub.percentage}
+                  progress={hasSubClasses ? sub.percentage : 0}
+                  fillColor={!hasSubClasses ? Colors.sand : undefined}
                   height={8}
                   style={{ marginVertical: 10 }}
                 />
@@ -398,7 +442,9 @@ export default function AnalyticsScreen() {
                 <View
                   style={[
                     styles.thresholdNoteBox,
-                    sub.isAboveThreshold
+                    !hasSubClasses
+                      ? styles.thresholdBoxNeutral
+                      : sub.isAboveThreshold
                       ? styles.thresholdBoxSafe
                       : styles.thresholdBoxAlert,
                   ]}
@@ -406,17 +452,19 @@ export default function AnalyticsScreen() {
                   <ThemedText
                     variant="caption"
                     weight="medium"
-                    color={sub.isAboveThreshold ? Colors.sage : Colors.terracotta}
+                    color={
+                      !hasSubClasses
+                        ? Colors.textSecondary
+                        : sub.isAboveThreshold
+                        ? Colors.sage
+                        : Colors.terracotta
+                    }
                   >
-                    {sub.totalConducted === 0
-                      ? 'No theory classes recorded yet.'
+                    {!hasSubClasses
+                      ? 'No classes conducted yet.'
                       : sub.isAboveThreshold
-                      ? `Safe • Can miss ${sub.classesCanMiss} class${
-                          sub.classesCanMiss === 1 ? '' : 'es'
-                        }`
-                      : `Attend next ${sub.classesToAttend} consecutive class${
-                          sub.classesToAttend === 1 ? '' : 'es'
-                        } for 75%`}
+                      ? `Safe • Can miss ${pluralize(sub.classesCanMiss, 'class', 'classes')}`
+                      : `Attend next ${pluralize(sub.classesToAttend, 'consecutive class', 'consecutive classes')} to reach 75%`}
                   </ThemedText>
                 </View>
               </Card>
@@ -461,7 +509,6 @@ const styles = StyleSheet.create({
   },
   segmentTabActive: {
     backgroundColor: Colors.sage,
-    ...Shadows.subtle,
   },
   monthStripWrapper: {
     flexDirection: 'row',
@@ -581,5 +628,8 @@ const styles = StyleSheet.create({
   },
   thresholdBoxAlert: {
     backgroundColor: '#FDF3F1',
+  },
+  thresholdBoxNeutral: {
+    backgroundColor: '#F3EFEA',
   },
 });

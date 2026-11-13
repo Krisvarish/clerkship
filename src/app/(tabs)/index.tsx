@@ -33,6 +33,7 @@ import {
   getDayOfWeek,
   getSlotLockStatus,
   getWeekOfMonth,
+  formatOrdinal,
 } from '../../utils/scheduleUtils';
 
 const MONTH_NAMES = [
@@ -196,7 +197,7 @@ export default function ScheduleScreen() {
               {MONTH_NAMES[selectedDate.getMonth()]} {selectedDate.getFullYear()}
             </ThemedText>
             <ThemedText variant="caption" color={Colors.textSecondary}>
-              Week {weekOfMonth} • {dayOfWeekName}
+              {formatOrdinal(weekOfMonth)} Week • {dayOfWeekName}
             </ThemedText>
           </View>
 

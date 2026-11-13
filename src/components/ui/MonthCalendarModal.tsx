@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Modal,
   View,
@@ -51,6 +51,10 @@ export const MonthCalendarModal: React.FC<MonthCalendarModalProps> = ({
   semester,
 }) => {
   const [viewDate, setViewDate] = useState<Date>(selectedDate);
+
+  useEffect(() => {
+    setViewDate(selectedDate);
+  }, [selectedDate, visible]);
 
   const viewYear = viewDate.getFullYear();
   const viewMonth = viewDate.getMonth();

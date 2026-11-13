@@ -10,7 +10,8 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { Feather, Ionicons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../constants/Colors';
 import ThemedText from './ThemedText';
 import Card from './Card';
@@ -22,7 +23,12 @@ import {
   DayScheduleVariation,
   SemesterProfile,
 } from '../../types/attendance';
-import { DAYS_OF_WEEK } from '../../utils/scheduleUtils';
+import {
+  formatOrdinal,
+  formatApplicableWeeks,
+  isValid24hTime,
+  timeToMinutes,
+} from '../../utils/scheduleUtils';
 
 interface SemesterModalProps {
   visible: boolean;
@@ -40,13 +46,7 @@ const TIMETABLE_DAYS: DayOfWeek[] = [
   'Saturday',
 ];
 
-const WEEK_LABELS = [
-  { week: 1, label: '1st Week' },
-  { week: 2, label: '2nd Week' },
-  { week: 3, label: '3rd Week' },
-  { week: 4, label: '4th Week' },
-  { week: 5, label: '5th Week' },
-];
+const WEEKS = [1, 2, 3, 4, 5];
 
 export const SemesterModal: React.FC<SemesterModalProps> = ({
   visible,
@@ -54,6 +54,7 @@ export const SemesterModal: React.FC<SemesterModalProps> = ({
   onSave,
   editingSemester,
 }) => {
+  const insets = useSafeAreaInsets();
   const [name, setName] = useState('');
   const [subjects, setSubjects] = useState<string[]>([]);
   const [newSubjectInput, setNewSubjectInput] = useState('');
@@ -66,7 +67,6 @@ export const SemesterModal: React.FC<SemesterModalProps> = ({
     if (editingSemester) {
       setName(editingSemester.name);
       setSubjects([...editingSemester.subjects]);
-      // Deep clone template
       setScheduleTemplate(JSON.parse(JSON.stringify(editingSemester.scheduleTemplate)));
     } else {
       setName('');
@@ -82,7 +82,7 @@ export const SemesterModal: React.FC<SemesterModalProps> = ({
       ];
       setSubjects(defaultSubs);
 
-      // Default blank schedule with 1 variation per day
+      // Default schedule with 1 weekly variation per day
       const initialTemplate: Record<string, DayScheduleVariation[]> = {
         Sunday: [],
       };
@@ -105,7 +105,7 @@ export const SemesterModal: React.FC<SemesterModalProps> = ({
   const handleAddSubject = () => {
     const trimmed = newSubjectInput.trim();
     if (!trimmed) return;
-    if (subjects.includes(trimmed)) {
+    if (subjects.some((s) => s.toLowerCase() === trimmed.toLowerCase())) {
       Alert.alert('Duplicate Subject', 'This subject is already in your list.');
       return;
     }
@@ -136,7 +136,6 @@ export const SemesterModal: React.FC<SemesterModalProps> = ({
   const handleToggleRepeatsEveryWeek = (repeats: boolean) => {
     const updated = { ...scheduleTemplate };
     if (repeats) {
-      // Set to single variation with all weeks [1, 2, 3, 4, 5]
       const existingClasses = currentDayVariations[0]?.classes || [];
       updated[activeDay] = [
         {
@@ -147,7 +146,6 @@ export const SemesterModal: React.FC<SemesterModalProps> = ({
       ];
       setActiveVariationIndex(0);
     } else {
-      // Switch to alternating variations: start with 1st & 3rd
       const existingClasses = currentDayVariations[0]?.classes || [];
       updated[activeDay] = [
         {
@@ -164,7 +162,6 @@ export const SemesterModal: React.FC<SemesterModalProps> = ({
   const handleAddVariation = () => {
     const updated = { ...scheduleTemplate };
     const dayVars = [...(updated[activeDay] || [])];
-    const newIndex = dayVars.length + 1;
     dayVars.push({
       id: `${activeDay.toLowerCase()}_var_${Date.now()}`,
       applicableWeeks: [4, 5],
@@ -192,12 +189,12 @@ export const SemesterModal: React.FC<SemesterModalProps> = ({
 
     if (weeks.includes(weekNum)) {
       if (weeks.length === 1) {
-        Alert.alert('Week Selection', 'Variation must have at least one applicable week.');
+        Alert.alert('Week Selection', 'Each variation must apply to at least one week.');
         return;
       }
       targetVar.applicableWeeks = weeks.filter((w) => w !== weekNum);
     } else {
-      targetVar.applicableWeeks = [...weeks, weekNum].sort();
+      targetVar.applicableWeeks = [...weeks, weekNum].sort((a, b) => a - b);
     }
 
     dayVars[activeVariationIndex] = targetVar;
@@ -217,15 +214,16 @@ export const SemesterModal: React.FC<SemesterModalProps> = ({
     const targetVar = { ...dayVars[activeVariationIndex] };
     const classes = [...targetVar.classes];
 
-    // Determine default start & end times based on existing classes
     let defaultStart = '14:00';
     let defaultEnd = '15:00';
     if (classes.length > 0) {
       const lastClass = classes[classes.length - 1];
       defaultStart = lastClass.endTime || '15:00';
-      const [h, m] = defaultStart.split(':').map(Number);
-      const nextH = Math.min(23, (h || 14) + 1);
-      defaultEnd = `${String(nextH).padStart(2, '0')}:${String(m || 0).padStart(2, '0')}`;
+      if (isValid24hTime(defaultStart)) {
+        const [h, m] = defaultStart.split(':').map(Number);
+        const nextH = Math.min(23, (h || 14) + 1);
+        defaultEnd = `${String(nextH).padStart(2, '0')}:${String(m || 0).padStart(2, '0')}`;
+      }
     }
 
     const newSlot: ClassSlot = {
@@ -264,16 +262,60 @@ export const SemesterModal: React.FC<SemesterModalProps> = ({
     setScheduleTemplate(updated);
   };
 
-  // Save Validation
+  // Comprehensive Save Validation
   const handleSave = () => {
     const trimmedName = name.trim();
     if (!trimmedName) {
-      Alert.alert('Semester Name', 'Please enter a valid semester name.');
+      Alert.alert('Semester Name Required', 'Please enter a valid semester name.');
       return;
     }
     if (subjects.length === 0) {
-      Alert.alert('Subjects', 'Please add at least one subject.');
+      Alert.alert('Subjects Required', 'Please add at least one subject to your semester.');
       return;
+    }
+
+    // Validate timetable slots and variations
+    for (const day of TIMETABLE_DAYS) {
+      const variations = scheduleTemplate[day] || [];
+      for (let vIdx = 0; vIdx < variations.length; vIdx++) {
+        const variation = variations[vIdx];
+        if (!variation.applicableWeeks || variation.applicableWeeks.length === 0) {
+          Alert.alert(
+            'Missing Weeks',
+            `Please select at least one week for ${day} (Variation ${vIdx + 1}).`
+          );
+          return;
+        }
+
+        for (let sIdx = 0; sIdx < variation.classes.length; sIdx++) {
+          const slot = variation.classes[sIdx];
+          const slotNum = sIdx + 1;
+
+          if (!isValid24hTime(slot.startTime)) {
+            Alert.alert(
+              'Invalid Start Time',
+              `Please enter a valid 24-hour start time (HH:mm) for Slot ${slotNum} on ${day}.`
+            );
+            return;
+          }
+
+          if (!isValid24hTime(slot.endTime)) {
+            Alert.alert(
+              'Invalid End Time',
+              `Please enter a valid 24-hour end time (HH:mm) for Slot ${slotNum} on ${day}.`
+            );
+            return;
+          }
+
+          if (timeToMinutes(slot.startTime) >= timeToMinutes(slot.endTime)) {
+            Alert.alert(
+              'Invalid Time Range',
+              `${day} Slot ${slotNum} (${slot.subject}): Start time (${slot.startTime}) must be earlier than end time (${slot.endTime}).`
+            );
+            return;
+          }
+        }
+      }
     }
 
     const savedSemester: SemesterProfile = {
@@ -296,9 +338,9 @@ export const SemesterModal: React.FC<SemesterModalProps> = ({
         style={styles.keyboardContainer}
       >
         <View style={styles.container}>
-          {/* Top Bar */}
-          <View style={styles.topBar}>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+          {/* Top Bar with dynamic notch/status bar insets */}
+          <View style={[styles.topBar, { paddingTop: Math.max(insets.top, 16) }]}>
+            <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Feather name="x" size={22} color={Colors.textPrimary} />
             </TouchableOpacity>
             <ThemedText variant="heading" weight="semibold">
@@ -312,14 +354,18 @@ export const SemesterModal: React.FC<SemesterModalProps> = ({
             />
           </View>
 
-          <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={[styles.scrollContent, { paddingBottom: 40 + insets.bottom }]}
+            keyboardShouldPersistTaps="handled"
+          >
             {/* Section 1: Semester Name */}
             <Card style={styles.card}>
               <ThemedText variant="subheading" weight="semibold" style={styles.cardHeader}>
                 Semester Details
               </ThemedText>
               <ThemedText variant="caption" color={Colors.textSecondary} style={styles.helperText}>
-                E.g. MBBS 3rd Year Part-I, Fall 2026, Clinical Rotation
+                E.g., MBBS 3rd Year Part-I, Fall 2026, Clinical Postings
               </ThemedText>
               <TextInput
                 value={name}
@@ -344,7 +390,7 @@ export const SemesterModal: React.FC<SemesterModalProps> = ({
                 <TextInput
                   value={newSubjectInput}
                   onChangeText={setNewSubjectInput}
-                  placeholder="New subject (e.g. Ophthalmology)"
+                  placeholder="New subject (e.g., Ophthalmology)"
                   placeholderTextColor={Colors.sand}
                   style={[styles.textInput, styles.flexInput]}
                   onSubmitEditing={handleAddSubject}
@@ -467,12 +513,12 @@ export const SemesterModal: React.FC<SemesterModalProps> = ({
                     </TouchableOpacity>
                   </View>
 
-                  {/* Week selector pills for active variation */}
+                  {/* Week selector pills with accurate ordinals: 1st, 2nd, 3rd, 4th, 5th */}
                   <ThemedText variant="caption" weight="medium" style={styles.weekPillsLabel}>
                     Select applicable weeks for Variation {activeVariationIndex + 1}:
                   </ThemedText>
                   <View style={styles.weekPillsRow}>
-                    {WEEK_LABELS.map(({ week, label }) => {
+                    {WEEKS.map((week) => {
                       const isSelected = currentVariation.applicableWeeks?.includes(week);
                       return (
                         <TouchableOpacity
@@ -488,7 +534,7 @@ export const SemesterModal: React.FC<SemesterModalProps> = ({
                             weight={isSelected ? 'semibold' : 'regular'}
                             color={isSelected ? Colors.white : Colors.textSecondary}
                           >
-                            {week}st
+                            {formatOrdinal(week)}
                           </ThemedText>
                         </TouchableOpacity>
                       );
@@ -630,7 +676,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'ios' ? 20 : 16,
     paddingBottom: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#EDE7DE',
@@ -650,7 +695,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 16,
     gap: 16,
-    paddingBottom: 40,
   },
   card: {
     backgroundColor: Colors.card,

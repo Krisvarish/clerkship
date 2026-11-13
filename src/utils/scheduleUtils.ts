@@ -8,6 +8,9 @@ import {
   SubjectAttendanceStats,
   AggregateAttendanceStats,
 } from '../types/attendance';
+import { formatOrdinal, pluralize, nounOnly } from './formatters';
+
+export * from './formatters';
 
 export const DAYS_OF_WEEK: DayOfWeek[] = [
   'Monday',
@@ -234,7 +237,7 @@ export function calculateSubjectStats(
     };
     const totalConducted = present + absent;
     const percentage = totalConducted === 0 ? 0 : Math.round((present / totalConducted) * 100);
-    const isAboveThreshold = percentage >= 75;
+    const isAboveThreshold = totalConducted > 0 && percentage >= 75;
 
     let classesToAttend = 0;
     let classesCanMiss = 0;
@@ -282,7 +285,7 @@ export function calculateAggregateStats(
   const totalConducted = totalPresent + totalAbsent;
   const overallPercentage =
     totalConducted === 0 ? 0 : Math.round((totalPresent / totalConducted) * 100);
-  const isAboveThreshold = overallPercentage >= 75;
+  const isAboveThreshold = totalConducted > 0 && overallPercentage >= 75;
 
   let classesToAttend = 0;
   let classesCanMiss = 0;

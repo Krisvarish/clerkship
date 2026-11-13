@@ -56,8 +56,8 @@ function getWeekdayNumber(day: DayOfWeek): number {
 /**
  * Schedule 10-minute pre-class reminders for all classes in the active semester template.
  */
-export async function scheduleSemesterReminders(semester: SemesterProfile): Promise<boolean> {
-  if (Platform.OS === 'web') {
+export async function scheduleSemesterReminders(semester: SemesterProfile | null | undefined): Promise<boolean> {
+  if (Platform.OS === 'web' || !semester || !semester.scheduleTemplate) {
     return true;
   }
 
